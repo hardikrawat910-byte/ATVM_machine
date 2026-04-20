@@ -1,0 +1,1761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ATVM Pro — Navi Mumbai Metro FSM Simulator</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700;900&display=swap" rel="stylesheet"/>
+  <style>
+    /* ═══════════════════════════════════════════════════════
+       DESIGN TOKENS
+    ═══════════════════════════════════════════════════════ */
+    :root {
+      --bg:           #060b18;
+      --bg-panel:     #0b1225;
+      --bg-terminal:  #07101e;
+      --accent-cyan:  #00d4ff;
+      --accent-violet:#8466cc;
+      --accent-green: #00e676;
+      --accent-red:   #ff3d57;
+      --accent-yellow:#ffb300;
+      --text:         #cde8f5;
+      --text-muted:   #3f5f78;
+      --border:       #152035;
+      --radius:       13px;
+      --font-mono:    'Share Tech Mono', 'Courier New', monospace;
+      --font-ui:      'Exo 2', system-ui, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-ui);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SCROLLBARS
+    ═══════════════════════════════════════════════════════ */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 2px; }
+
+    /* ═══════════════════════════════════════════════════════
+       HEADER
+    ═══════════════════════════════════════════════════════ */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 20px;
+      background: linear-gradient(90deg, #060b18, #0a1222 60%, #060e18);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-cyan) 50%, transparent);
+      opacity: 0.35;
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+
+    .brand-icon {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, #00a8cc, #6040a0);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px;
+      box-shadow: 0 0 16px rgba(0,180,220,0.3);
+      flex-shrink: 0;
+    }
+
+    .brand h1 {
+      font-size: 1rem; font-weight: 700;
+      color: var(--text); letter-spacing: 0.2px;
+    }
+
+    .brand-sub {
+      font-size: 0.64rem; color: var(--text-muted);
+      letter-spacing: 1.2px; text-transform: uppercase; margin-top: 1px;
+    }
+
+    .header-right { display: flex; align-items: center; gap: 8px; }
+
+    .live-clock {
+      font-family: var(--font-mono); font-size: 0.75rem;
+      color: var(--accent-cyan);
+      padding: 4px 10px;
+      border: 1px solid rgba(0,212,255,0.22);
+      border-radius: 6px;
+      background: rgba(0,212,255,0.04);
+      letter-spacing: 1px;
+    }
+
+    .hdr-btn {
+      background: rgba(132,102,204,0.1);
+      color: var(--accent-violet);
+      border: 1px solid rgba(132,102,204,0.3);
+      padding: 5px 12px;
+      border-radius: 7px;
+      font-family: var(--font-ui); font-size: 0.72rem; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.2px; transition: all 0.18s;
+    }
+    .hdr-btn:hover { background: rgba(132,102,204,0.22); box-shadow: 0 0 12px rgba(132,102,204,0.22); }
+    .hdr-btn.cyan {
+      color: var(--accent-cyan);
+      background: rgba(0,212,255,0.06);
+      border-color: rgba(0,212,255,0.22);
+    }
+    .hdr-btn.cyan:hover { background: rgba(0,212,255,0.14); }
+
+    /* ═══════════════════════════════════════════════════════
+       MAIN LAYOUT
+    ═══════════════════════════════════════════════════════ */
+    main {
+      flex: 1; display: flex; flex-direction: column;
+      overflow: hidden; min-height: 0;
+    }
+
+    .split {
+      flex: 1; display: flex; gap: 8px;
+      padding: 10px 10px 0; min-height: 0; overflow: hidden;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       FSM DIAGRAM PANEL (LEFT)
+    ═══════════════════════════════════════════════════════ */
+    .fsm-panel {
+      flex: 1.1; background: var(--bg-panel);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    .panel-label {
+      padding: 6px 14px;
+      font-size: 0.62rem; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0;
+    }
+
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 7px var(--accent-green);
+      animation: blink 2s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    #fsmSvgWrap {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 6px 4px 2px; overflow: hidden;
+    }
+    #fsmSvg { width: 100%; height: 100%; max-height: 310px; }
+
+    /* ═══════════════════════════════════════════════════════
+       TERMINAL PANEL (RIGHT)
+    ═══════════════════════════════════════════════════════ */
+    .terminal-panel {
+      flex: 1; background: var(--bg-terminal);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      display: flex; flex-direction: column; overflow: hidden; position: relative;
+    }
+
+    .terminal-panel::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
+      pointer-events: none; z-index: 1; border-radius: var(--radius);
+    }
+
+    .t-header {
+      flex-shrink: 0; padding: 6px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      position: relative; z-index: 2;
+    }
+    .t-header-left {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--text-muted);
+    }
+    .t-status {
+      font-family: var(--font-mono); font-size: 0.62rem;
+      color: var(--accent-green); letter-spacing: 0.5px;
+    }
+
+    /* Terminal output / screen */
+    #screen {
+      flex: 1; padding: 10px 14px;
+      font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.6;
+      overflow-y: auto; position: relative; z-index: 2; min-height: 0;
+    }
+
+    .log-line { margin-bottom: 0; }
+    .log-info       { color: #8ab8d0; }
+    .log-transition { color: var(--accent-cyan); }
+    .log-success    { color: var(--accent-green); }
+    .log-error      { color: var(--accent-red); }
+    .log-warn       { color: var(--accent-yellow); }
+    .log-muted      { color: #253848; }
+    .log-input      { color: #6a9aaa; }
+    .log-heading    { color: #1e3a50; }
+    .log-title      { color: #3a6a80; font-weight: 700; }
+
+    /* State bar */
+    .state-bar {
+      flex-shrink: 0; padding: 6px 14px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(0,0,0,0.25);
+      position: relative; z-index: 2;
+    }
+    .state-lbl { font-size: 0.68rem; color: var(--text-muted); flex-shrink: 0; }
+
+    .state-badge {
+      font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+      padding: 2px 9px; border-radius: 4px; flex-shrink: 0;
+      transition: all 0.25s;
+    }
+    #stateDesc {
+      font-size: 0.7rem; font-family: var(--font-ui);
+      min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      transition: color 0.25s;
+    }
+
+    /* Breadcrumb */
+    .breadcrumb {
+      flex-shrink: 0; padding: 4px 14px;
+      font-family: var(--font-mono); font-size: 0.68rem;
+      white-space: nowrap; overflow-x: auto;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 3px;
+      position: relative; z-index: 2; min-height: 26px;
+    }
+    .bc-node { padding: 1px 6px; border-radius: 3px; font-size: 0.66rem; white-space: nowrap; }
+    .bc-idle    { color: var(--text-muted); background: rgba(255,255,255,0.02); }
+    .bc-visited { color: rgba(0,212,255,0.65); background: rgba(0,212,255,0.05); }
+    .bc-current { color: #000; background: var(--accent-cyan); font-weight: 700; }
+    .bc-error   { color: #fff; background: var(--accent-red); font-weight: 700; }
+    .bc-cancel  { color: #000; background: var(--accent-yellow); font-weight: 700; }
+    .bc-sep     { color: var(--text-muted); font-size: 0.62rem; flex-shrink: 0; }
+
+    /* Dynamic buttons area */
+    #dynButtons {
+      flex-shrink: 0; padding: 7px 10px;
+      display: flex; flex-wrap: wrap; gap: 5px;
+      position: relative; z-index: 2;
+      min-height: 38px;
+    }
+
+    .fsm-btn {
+      border: 1px solid; border-radius: 7px;
+      padding: 5px 11px;
+      font-family: var(--font-ui); font-size: 0.72rem; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+      letter-spacing: 0.1px; line-height: 1.3;
+    }
+    .fsm-btn:active { transform: translateY(1px); }
+
+    .btn-normal  { background:rgba(0,212,255,0.06); border-color:rgba(0,212,255,0.28); color:var(--accent-cyan); }
+    .btn-normal:hover  { background:rgba(0,212,255,0.15); box-shadow:0 0 10px rgba(0,212,255,0.15); }
+    .btn-error   { background:rgba(255,61,87,0.06); border-color:rgba(255,61,87,0.28); color:var(--accent-red); }
+    .btn-error:hover   { background:rgba(255,61,87,0.15); box-shadow:0 0 10px rgba(255,61,87,0.15); }
+    .btn-cancel  { background:rgba(255,179,0,0.06); border-color:rgba(255,179,0,0.28); color:var(--accent-yellow); }
+    .btn-cancel:hover  { background:rgba(255,179,0,0.15); box-shadow:0 0 10px rgba(255,179,0,0.15); }
+    .btn-reset   { background:rgba(0,230,118,0.06); border-color:rgba(0,230,118,0.28); color:var(--accent-green); }
+    .btn-reset:hover   { background:rgba(0,230,118,0.15); box-shadow:0 0 10px rgba(0,230,118,0.15); }
+    .btn-success { background:rgba(0,230,118,0.1); border-color:rgba(0,230,118,0.4); color:var(--accent-green); font-weight:700; }
+    .btn-success:hover { background:rgba(0,230,118,0.22); box-shadow:0 0 14px rgba(0,230,118,0.22); }
+    .btn-violet  { background:rgba(132,102,204,0.08); border-color:rgba(132,102,204,0.3); color:var(--accent-violet); }
+    .btn-violet:hover  { background:rgba(132,102,204,0.18); }
+
+    /* Text input row */
+    .input-row {
+      flex-shrink: 0; padding: 5px 10px 8px;
+      position: relative; z-index: 2;
+      display: flex; gap: 6px; align-items: center;
+    }
+
+    .input-row label {
+      font-family: var(--font-mono); font-size: 0.7rem;
+      color: var(--accent-cyan); flex-shrink: 0;
+    }
+
+    #textInput {
+      flex: 1; background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(0,212,255,0.2); border-radius: 6px;
+      color: var(--accent-cyan); font-family: var(--font-mono); font-size: 0.78rem;
+      padding: 5px 10px; outline: none; transition: border-color 0.2s;
+    }
+    #textInput:focus {
+      border-color: rgba(0,212,255,0.55);
+      box-shadow: 0 0 12px rgba(0,212,255,0.1);
+    }
+    #textInput::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+    .enter-btn {
+      background: rgba(0,212,255,0.12); border: 1px solid rgba(0,212,255,0.3);
+      color: var(--accent-cyan); font-family: var(--font-mono); font-size: 0.72rem;
+      padding: 5px 10px; border-radius: 6px; cursor: pointer; flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .enter-btn:hover { background: rgba(0,212,255,0.22); }
+
+    /* ═══════════════════════════════════════════════════════
+       BOTTOM COLLAPSIBLES
+    ═══════════════════════════════════════════════════════ */
+    .bottom-row {
+      display: flex; gap: 8px; padding: 8px 10px 8px; flex-shrink: 0;
+    }
+
+    .collapsible {
+      flex: 1; background: var(--bg-panel);
+      border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+    }
+
+    .coll-header {
+      padding: 7px 14px; display: flex;
+      justify-content: space-between; align-items: center;
+      cursor: pointer; user-select: none; transition: background 0.15s;
+    }
+    .coll-header:hover { background: rgba(255,255,255,0.02); }
+    .coll-title { font-size: 0.64rem; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-muted); }
+    .coll-chevron { color: var(--accent-violet); font-size: 0.68rem; transition: transform 0.2s; }
+    .coll-chevron.open { transform: rotate(180deg); }
+
+    .coll-body {
+      display: none; padding: 10px 14px 12px;
+      border-top: 1px solid var(--border);
+      font-size: 0.74rem; line-height: 1.6; color: #5a8a9a;
+      max-height: 200px; overflow-y: auto;
+    }
+    .coll-body.open { display: block; }
+    .coll-body p + p { margin-top: 5px; }
+    .coll-body strong { color: var(--accent-cyan); }
+
+    .state-table { width:100%; border-collapse:collapse; font-size:0.69rem; font-family:var(--font-mono); margin-top:4px; }
+    .state-table th { background:rgba(132,102,204,0.13); color:var(--accent-violet); font-weight:700; padding:4px 8px; text-align:left; border:1px solid var(--border); }
+    .state-table td { padding:4px 8px; border:1px solid var(--border); color:var(--text); }
+    .state-table tr:nth-child(even) td { background:rgba(255,255,255,0.02); }
+
+    /* ═══════════════════════════════════════════════════════
+       FOOTER
+    ═══════════════════════════════════════════════════════ */
+    footer {
+      flex-shrink: 0; padding: 6px 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.64rem; color: var(--text-muted);
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(6,11,24,0.97);
+    }
+    footer .dev { color: var(--accent-cyan); font-weight: 600; }
+
+    /* ═══════════════════════════════════════════════════════
+       MODALS (overlay backdrop)
+    ═══════════════════════════════════════════════════════ */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.88);
+      display: none; justify-content: center; align-items: center;
+      z-index: 999; padding: 20px; backdrop-filter: blur(6px);
+    }
+    .overlay.open { display: flex; }
+
+    .modal-close-btn {
+      background: var(--accent-red); color: #fff; border: none;
+      width: 28px; height: 28px; border-radius: 50%;
+      font-size: 1rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+
+    /* Map modal */
+    .map-box {
+      width: 520px; max-width: 90vw;
+      background: var(--bg-panel);
+      border: 1px solid var(--accent-cyan); border-radius: 16px; overflow: hidden;
+      box-shadow: 0 0 50px rgba(0,212,255,0.18);
+    }
+    .modal-hdr {
+      padding: 10px 16px; background: var(--bg);
+      color: #fff; font-family: var(--font-ui); font-size: 0.86rem; font-weight: 700;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .map-iframe { width: 100%; height: 370px; border: none; display: block; }
+
+    /* Ticket modal */
+    .ticket-box {
+      width: 380px; max-width: 92vw;
+      background: #fff; border-radius: 18px; overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.55);
+      font-family: var(--font-ui); color: #111;
+    }
+    .ticket-head {
+      background: #090e1f; padding: 14px 18px;
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .ticket-brand { font-size: 0.88rem; font-weight: 700; color: var(--accent-cyan); }
+    .ticket-sub-lbl { font-size: 0.6rem; color: #3a5a70; letter-spacing: 1px; text-transform: uppercase; margin-top: 2px; }
+    .ticket-body { padding: 16px 18px 0; }
+    .ticket-route { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .ticket-station { flex: 1; text-align: center; }
+    .ticket-stn-name { font-size: 1.05rem; font-weight: 800; color: #111; }
+    .ticket-stn-lbl { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 1px; color: #999; margin-top: 2px; }
+    .ticket-arrow { font-size: 1.2rem; color: #00a8cc; flex-shrink: 0; }
+    .ticket-perf { display: flex; align-items: center; margin: 0 -18px 14px; }
+    .perf-hole { width: 18px; height: 18px; border-radius: 50%; background: #f0f0f2; border: 1px solid #ddd; flex-shrink: 0; }
+    .perf-line { flex: 1; border-top: 2px dashed #e0e0e0; }
+    .ticket-details { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .td-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 1px; color: #aaa; margin-bottom: 2px; }
+    .td-value { font-size: 0.84rem; font-weight: 700; color: #111; }
+    .td-fare  { font-size: 1.4rem; font-weight: 900; color: #090e1f; }
+    .ticket-foot {
+      background: #f5f5f7; padding: 9px 18px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-top: 1px solid #eee;
+    }
+    .ticket-barcode { font-family: var(--font-mono); font-size: 0.48rem; letter-spacing: 3px; color: #bbb; }
+    .ticket-valid { font-size: 0.66rem; color: #00c853; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* Responsive */
+    @media (max-width: 800px) {
+      body { overflow: auto; height: auto; }
+      .split { flex-direction: column; padding: 8px 8px 0; }
+      .bottom-row { flex-direction: column; }
+      .fsm-panel { min-height: 220px; }
+      .terminal-panel { min-height: 420px; }
+      .live-clock { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════ -->
+<header>
+  <div class="brand">
+    <div class="brand-icon">🚇</div>
+    <div>
+      <h1>ATVM Pro — Navi Mumbai Metro FSM Simulator</h1>
+      <div class="brand-sub">Belapur Terminal · Navi Mumbai Metro · CIDCO · Developed by Hardik Rawat</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-clock" id="liveClock">00:00:00</div>
+    <button class="hdr-btn cyan" id="summaryBtn">📊 Summary</button>
+    <button class="hdr-btn cyan" id="stationsBtn">🗺 Stations</button>
+    <button class="hdr-btn" id="mapBtn">📍 Map</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════
+     MAIN CONTENT
+══════════════════════════════════════════ -->
+<main>
+  <div class="split">
+
+    <!-- ── FSM Diagram Panel ── -->
+    <div class="fsm-panel">
+      <div class="panel-label">
+        <span>Live FSM State Diagram — Navi Mumbai Metro ATVM</span>
+        <div class="live-dot"></div>
+      </div>
+      <div id="fsmSvgWrap">
+        <!--
+          ViewBox: 0 0 760 295
+          Main row (y=105, r=26): Q0(38) Q1(128) Q2(218) Q3(308) Q4(398) Q5(488) Q6(578) Q7(668)
+          Error/cancel row (y=220): QI(180) QR(528)
+        -->
+        <svg id="fsmSvg" viewBox="0 0 760 295" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="am" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="rgba(0,212,255,0.85)"/>
+            </marker>
+            <marker id="ae" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="rgba(255,61,87,0.85)"/>
+            </marker>
+            <marker id="ac" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="rgba(255,179,0,0.85)"/>
+            </marker>
+            <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="rgba(0,230,118,0.85)"/>
+            </marker>
+            <marker id="av" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 Z" fill="rgba(132,102,204,0.85)"/>
+            </marker>
+            <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="5" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- START arrow into Q0 -->
+          <line x1="6" y1="105" x2="10" y2="105" stroke="rgba(0,212,255,0.5)" stroke-width="1.5" marker-end="url(#am)"/>
+
+          <!-- Main happy path -->
+          <line x1="66" y1="105" x2="100" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+          <line x1="156" y1="105" x2="190" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+          <line x1="246" y1="105" x2="280" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+          <line x1="336" y1="105" x2="370" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+          <line x1="426" y1="105" x2="460" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+          <line x1="516" y1="105" x2="550" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+          <line x1="606" y1="105" x2="640" y2="105" stroke="rgba(0,212,255,0.7)" stroke-width="1.5" marker-end="url(#am)"/>
+
+          <!-- Error paths (Q2→QI, Q3→QI, Q4→QI) dashed red -->
+          <path d="M 218,129 C 210,168 195,188 185,207" stroke="rgba(255,61,87,0.5)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ae)"/>
+          <path d="M 308,130 C 285,168 225,192 192,207" stroke="rgba(255,61,87,0.45)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ae)"/>
+          <path d="M 395,128 C 355,162 248,190 196,207" stroke="rgba(255,61,87,0.4)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ae)"/>
+
+          <!-- Cancel paths (Q3→QR, Q4→QR, Q5→QR, Q6→QR) dashed yellow -->
+          <path d="M 316,128 C 340,168 480,195 512,207" stroke="rgba(255,179,0,0.42)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ac)"/>
+          <path d="M 405,128 C 415,162 490,192 516,207" stroke="rgba(255,179,0,0.47)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ac)"/>
+          <path d="M 493,128 C 502,160 518,185 520,207" stroke="rgba(255,179,0,0.52)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ac)"/>
+          <path d="M 578,128 C 568,160 545,188 536,207" stroke="rgba(255,179,0,0.5)" stroke-width="1.2" stroke-dasharray="4,3" fill="none" marker-end="url(#ac)"/>
+
+          <!-- Reset: QI→Q0 arc under -->
+          <path d="M 165,232 C 110,270 30,252 28,133" stroke="rgba(0,230,118,0.6)" stroke-width="1.3" stroke-dasharray="5,3" fill="none" marker-end="url(#ar)"/>
+          <!-- Reset: QR→Q0 arc under -->
+          <path d="M 505,234 C 420,278 52,278 32,136" stroke="rgba(0,230,118,0.45)" stroke-width="1.3" stroke-dasharray="5,3" fill="none" marker-end="url(#ar)"/>
+          <!-- Q7→Q0 over-top arc -->
+          <path d="M 668,79 C 668,25 38,25 38,79" stroke="rgba(0,230,118,0.4)" stroke-width="1.2" stroke-dasharray="5,3" fill="none" marker-end="url(#ar)"/>
+
+          <!-- Retry: QI→Q2 (violet) -->
+          <path d="M 173,218 C 178,195 200,165 208,133" stroke="rgba(132,102,204,0.75)" stroke-width="1.2" stroke-dasharray="3,2" fill="none" marker-end="url(#av)"/>
+
+          <!-- ══ STATE NODES ══ -->
+
+          <!-- Q0: Idle -->
+          <g id="nd-Q0" class="sn">
+            <circle cx="38" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="38" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q0</text>
+            <text x="38" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">IDLE</text>
+          </g>
+
+          <!-- Q1: User Type -->
+          <g id="nd-Q1" class="sn">
+            <circle cx="128" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="128" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q1</text>
+            <text x="128" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">USER</text>
+          </g>
+
+          <!-- Q2: Card Validation -->
+          <g id="nd-Q2" class="sn">
+            <circle cx="218" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="218" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q2</text>
+            <text x="218" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">CARD</text>
+          </g>
+
+          <!-- Q3: Destination -->
+          <g id="nd-Q3" class="sn">
+            <circle cx="308" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="308" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q3</text>
+            <text x="308" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">DEST</text>
+          </g>
+
+          <!-- Q4: Journey Type -->
+          <g id="nd-Q4" class="sn">
+            <circle cx="398" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="398" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q4</text>
+            <text x="398" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">JOURNEY</text>
+          </g>
+
+          <!-- Q5: Passengers + Fare -->
+          <g id="nd-Q5" class="sn">
+            <circle cx="488" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="488" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q5</text>
+            <text x="488" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">FARE</text>
+          </g>
+
+          <!-- Q6: Payment -->
+          <g id="nd-Q6" class="sn">
+            <circle cx="578" cy="105" r="26" fill="#0a1828" stroke="rgba(0,212,255,0.35)" stroke-width="1.8"/>
+            <text x="578" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#70a8c0;text-anchor:middle;dominant-baseline:middle">Q6</text>
+            <text x="578" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1e3a50;text-anchor:middle;dominant-baseline:middle">PAY</text>
+          </g>
+
+          <!-- Q7: Print Ticket (double circle = accept state) -->
+          <g id="nd-Q7" class="sn">
+            <circle cx="668" cy="105" r="26" fill="#071a10" stroke="rgba(0,230,118,0.55)" stroke-width="1.8"/>
+            <circle cx="668" cy="105" r="19" fill="none" stroke="rgba(0,230,118,0.22)" stroke-width="1"/>
+            <text x="668" y="101" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#60aa80;text-anchor:middle;dominant-baseline:middle">Q7</text>
+            <text x="668" y="113" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#1a5028;text-anchor:middle;dominant-baseline:middle">PRINT ✓</text>
+          </g>
+
+          <!-- QI: Error -->
+          <g id="nd-QI" class="sn">
+            <circle cx="180" cy="225" r="26" fill="#180608" stroke="rgba(255,61,87,0.42)" stroke-width="1.8"/>
+            <text x="180" y="221" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#bb6060;text-anchor:middle;dominant-baseline:middle">QI</text>
+            <text x="180" y="233" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#501818;text-anchor:middle;dominant-baseline:middle">ERROR</text>
+          </g>
+
+          <!-- QR: Cancel / Recharge / Info -->
+          <g id="nd-QR" class="sn">
+            <circle cx="528" cy="225" r="26" fill="#181000" stroke="rgba(255,179,0,0.42)" stroke-width="1.8"/>
+            <text x="528" y="221" style="font-family:'Share Tech Mono',monospace;font-size:10px;fill:#b08030;text-anchor:middle;dominant-baseline:middle">QR</text>
+            <text x="528" y="233" style="font-family:'Share Tech Mono',monospace;font-size:5.5px;fill:#503010;text-anchor:middle;dominant-baseline:middle">INFO/CXL</text>
+          </g>
+
+          <!-- Legend -->
+          <g transform="translate(8,278)">
+            <line x1="0" y1="5" x2="16" y2="5" stroke="rgba(0,212,255,0.8)" stroke-width="1.4" marker-end="url(#am)"/>
+            <text x="20" y="8" style="font-family:'Share Tech Mono',monospace;font-size:6.5px;fill:#2a4858">Main</text>
+            <line x1="58" y1="5" x2="74" y2="5" stroke="rgba(255,61,87,0.7)" stroke-width="1.4" stroke-dasharray="3,2" marker-end="url(#ae)"/>
+            <text x="78" y="8" style="font-family:'Share Tech Mono',monospace;font-size:6.5px;fill:#2a4858">Error</text>
+            <line x1="118" y1="5" x2="134" y2="5" stroke="rgba(255,179,0,0.7)" stroke-width="1.4" stroke-dasharray="3,2" marker-end="url(#ac)"/>
+            <text x="138" y="8" style="font-family:'Share Tech Mono',monospace;font-size:6.5px;fill:#2a4858">Cancel</text>
+            <line x1="186" y1="5" x2="202" y2="5" stroke="rgba(0,230,118,0.7)" stroke-width="1.4" stroke-dasharray="3,2" marker-end="url(#ar)"/>
+            <text x="206" y="8" style="font-family:'Share Tech Mono',monospace;font-size:6.5px;fill:#2a4858">Reset</text>
+            <line x1="248" y1="5" x2="264" y2="5" stroke="rgba(132,102,204,0.8)" stroke-width="1.4" stroke-dasharray="3,2" marker-end="url(#av)"/>
+            <text x="268" y="8" style="font-family:'Share Tech Mono',monospace;font-size:6.5px;fill:#2a4858">Retry</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <!-- ── Terminal / ATVM Booking Panel ── -->
+    <div class="terminal-panel">
+      <div class="t-header">
+        <div class="t-header-left">ATVM Interactive Terminal</div>
+        <div class="t-status" id="termStatus">● READY</div>
+      </div>
+
+      <!-- Screen output -->
+      <div id="screen"></div>
+
+      <!-- State badge + description -->
+      <div class="state-bar">
+        <span class="state-lbl">State:</span>
+        <span class="state-badge" id="stateBadge">Q0</span>
+        <span id="stateDesc">Main Menu — Idle</span>
+      </div>
+
+      <!-- Breadcrumb -->
+      <div class="breadcrumb" id="breadcrumb"></div>
+
+      <!-- Dynamic action buttons -->
+      <div id="dynButtons"></div>
+
+      <!-- Text input row -->
+      <div class="input-row">
+        <label>▶</label>
+        <input id="textInput" type="text" placeholder="Type here and press Enter (for dates, amounts, ages…)" autocomplete="off" spellcheck="false"/>
+        <button class="enter-btn" id="enterBtn">ENTER ↵</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Bottom Collapsibles ── -->
+  <div class="bottom-row">
+    <div class="collapsible">
+      <div class="coll-header" id="aboutHeader">
+        <span class="coll-title">About — FSM Theory</span>
+        <span class="coll-chevron" id="aboutChev">▼</span>
+      </div>
+      <div class="coll-body" id="aboutBody">
+        <p>This is a fully functional <strong>Navi Mumbai Metro ATVM simulator</strong> modelled as a <strong>Finite State Machine (FSM)</strong>. The machine processes user inputs and transitions between states to complete a full ticket booking lifecycle.</p>
+        <p>The FSM has 10 visual states: <strong>Q0</strong> (Idle/Menu) → <strong>Q1</strong> (User Type) → <strong>Q2</strong> (Card Validation) → <strong>Q3</strong> (Destination) → <strong>Q4</strong> (Journey Type) → <strong>Q5</strong> (Passengers/Fare) → <strong>Q6</strong> (Payment) → <strong>Q7</strong> (Print ✓). Error state <strong>QI</strong> handles invalid inputs; <strong>QR</strong> handles cancel, recharge, and info branches. The live diagram above is always in sync with the machine's internal state.</p>
+      </div>
+    </div>
+
+    <div class="collapsible">
+      <div class="coll-header" id="tableHeader">
+        <span class="coll-title">State Transition Table</span>
+        <span class="coll-chevron" id="tableChev">▼</span>
+      </div>
+      <div class="coll-body" id="tableBody">
+        <table class="state-table">
+          <thead><tr><th>Visual</th><th>Internal States</th><th>Description</th><th>Exit To</th></tr></thead>
+          <tbody>
+            <tr><td>Q0</td><td>Q0</td><td>Main Menu / Idle</td><td>Q1, QR</td></tr>
+            <tr><td>Q1</td><td>Q1</td><td>User Type: Smart Card / Normal</td><td>Q2, Q3</td></tr>
+            <tr><td>Q2</td><td>Q2_DATE, Q2_AGE</td><td>Card Expiry &amp; Age/Category</td><td>Q3, QI, Q0</td></tr>
+            <tr><td>Q3</td><td>Q3</td><td>Destination Station Selection</td><td>Q4, QI, QR</td></tr>
+            <tr><td>Q4</td><td>Q4</td><td>Journey Type: Single/Return/Day Pass</td><td>Q5, QI, QR</td></tr>
+            <tr><td>Q5</td><td>Q5, Q6</td><td>Passenger Count + Fare Confirm</td><td>Q6, QI, QR</td></tr>
+            <tr><td>Q6</td><td>Q7, Q7_CASH, Q7_SIM</td><td>Payment: Cash/UPI/Card/Smart</td><td>Q7, QI, QR</td></tr>
+            <tr><td>Q7 ✓</td><td>Q8</td><td>Print Ticket (Accept State)</td><td>Q0</td></tr>
+            <tr><td>QI</td><td>—</td><td>Error / Invalid Input</td><td>Q2 (retry), Q0</td></tr>
+            <tr><td>QR</td><td>RECHARGE, STATIONS, SUMMARY</td><td>Info / Recharge / Cancel</td><td>Q0</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════════════════════════════
+     FOOTER
+══════════════════════════════════════════ -->
+<footer>
+  <span>ATVM Pro — Navi Mumbai Metro FSM Simulator &nbsp;·&nbsp; Belapur Terminal · CIDCO</span>
+  <span class="dev">Developed by Hardik Rawat</span>
+</footer>
+
+<!-- ══════════════════════════════════════════
+     MAP MODAL
+══════════════════════════════════════════ -->
+<div class="overlay" id="mapOverlay">
+  <div class="map-box">
+    <div class="modal-hdr">
+      <span>📍 Belapur Terminal — Navi Mumbai Metro</span>
+      <button class="modal-close-btn" id="mapClose">×</button>
+    </div>
+    <iframe class="map-iframe"
+      src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3771.8!2d73.031!3d19.014!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3be7c6a18985ed2b%3A0x7b5e50f8e748e9ef!2sCBD%20Belapur%20Station!5e0!3m2!1sen!2sin!4v1617123456789"
+      allowfullscreen loading="lazy">
+    </iframe>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     TICKET MODAL
+══════════════════════════════════════════ -->
+<div class="overlay" id="ticketOverlay">
+  <div class="ticket-box">
+    <div class="ticket-head">
+      <div>
+        <div class="ticket-brand">🚇 Navi Mumbai Metro Ticket</div>
+        <div class="ticket-sub-lbl">CIDCO · Metro Line 1</div>
+      </div>
+      <button class="modal-close-btn" id="ticketClose">×</button>
+    </div>
+    <div class="ticket-body">
+      <div class="ticket-route">
+        <div class="ticket-station">
+          <div class="ticket-stn-name" id="tk-from">Belapur Terminal</div>
+          <div class="ticket-stn-lbl">Origin</div>
+        </div>
+        <div class="ticket-arrow">→</div>
+        <div class="ticket-station">
+          <div class="ticket-stn-name" id="tk-to">—</div>
+          <div class="ticket-stn-lbl">Destination</div>
+        </div>
+      </div>
+      <div class="ticket-perf">
+        <div class="perf-hole"></div>
+        <div class="perf-line"></div>
+        <div class="perf-hole"></div>
+      </div>
+      <div class="ticket-details">
+        <div>
+          <div class="td-label">Ticket No.</div>
+          <div class="td-value" id="tk-no" style="font-size:0.72rem">—</div>
+        </div>
+        <div>
+          <div class="td-label">Fare</div>
+          <div class="td-fare" id="tk-fare">₹—</div>
+        </div>
+        <div>
+          <div class="td-label">Passenger</div>
+          <div class="td-value" id="tk-pax">—</div>
+        </div>
+        <div>
+          <div class="td-label">Journey Type</div>
+          <div class="td-value" id="tk-type">—</div>
+        </div>
+        <div>
+          <div class="td-label">Payment</div>
+          <div class="td-value" id="tk-payment">—</div>
+        </div>
+        <div>
+          <div class="td-label">Date &amp; Time</div>
+          <div class="td-value" id="tk-datetime" style="font-size:0.72rem">—</div>
+        </div>
+      </div>
+    </div>
+    <div class="ticket-foot">
+      <div class="ticket-barcode" id="tk-barcode">|||| |||| |||| ||||</div>
+      <div class="ticket-valid">✓ VALID</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     JAVASCRIPT — ATVM ENGINE + FSM SYNC
+══════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   VISUAL STATE MAPPER
+   Maps ATVM's internal states → visual FSM diagram nodes
+═══════════════════════════════════════════════════════════ */
+const STATE_VISUAL = {
+  'Q0':          'Q0',
+  'Q1':          'Q1',
+  'Q2_DATE':     'Q2',
+  'Q2_AGE':      'Q2',
+  'Q3':          'Q3',
+  'Q4':          'Q4',
+  'Q5':          'Q5',
+  'Q6':          'Q5',   // Fare confirm shares Q5 visual
+  'Q7':          'Q6',
+  'Q7_CASH':     'Q6',
+  'Q7_SIM':      'Q6',
+  'Q8':          'Q7',
+  'RECHARGE':    'QR',
+  'RECHARGE_AMT':'QR',
+  'RECHARGE_PAY':'QR',
+  'STATIONS':    'QR',
+  'SUMMARY':     'QR',
+};
+
+const NODE_META = {
+  Q0: { desc:'Main Menu — Idle',             bg:'#002838', color:'#00d4ff' },
+  Q1: { desc:'User Type Selection',          bg:'#002838', color:'#00d4ff' },
+  Q2: { desc:'Smart Card Validation',        bg:'#002838', color:'#00d4ff' },
+  Q3: { desc:'Destination Selection',        bg:'#002838', color:'#00d4ff' },
+  Q4: { desc:'Journey Type',                 bg:'#002838', color:'#00d4ff' },
+  Q5: { desc:'Passengers / Fare Confirm',    bg:'#002838', color:'#00d4ff' },
+  Q6: { desc:'Payment Processing',           bg:'#002838', color:'#00d4ff' },
+  Q7: { desc:'✓ Ticket Printed — Done',     bg:'#001a08', color:'#00e676' },
+  QI: { desc:'⚠ Error / Invalid Input',     bg:'#2a0008', color:'#ff3d57' },
+  QR: { desc:'Info / Recharge / Cancelled', bg:'#2a1400', color:'#ffb300' },
+};
+
+/* Visual path tracking */
+let visualPath = ['Q0'];
+let lastVisualNode = 'Q0';
+
+/* ═══════════════════════════════════════════════════════════
+   BUTTON CLASSIFIER — assigns CSS class based on label/value
+═══════════════════════════════════════════════════════════ */
+function getBtnClass(v, t) {
+  const lbl = (t || '').toUpperCase();
+  const val = (v || '').toUpperCase();
+  if (val === 'C' || val === 'BACK' || lbl.includes('CANCEL') || lbl.includes('EXIT'))
+    return 'btn-cancel';
+  if (val === 'MENU' || lbl.includes('← MENU') || lbl.includes('RESTART') || lbl.includes('BACK'))
+    return 'btn-reset';
+  if (lbl.includes('PRINT OK') || lbl.includes('SUCCESS') || lbl.includes('✓'))
+    return 'btn-success';
+  if (lbl.includes('FAIL') || lbl.includes('RETRY') || lbl.includes('ERROR'))
+    return 'btn-error';
+  if (lbl.includes('RECHARGE') || lbl.includes('SMART') || lbl.includes('STATIONS'))
+    return 'btn-violet';
+  return 'btn-normal';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LOG LINE CLASSIFIER — auto-assigns color class from content
+═══════════════════════════════════════════════════════════ */
+function getLogClass(t) {
+  if (!t) return 'log-muted';
+  if (t.includes('═') || t.includes('────')) return 'log-heading';
+  if (t.trim().startsWith('  >')) return 'log-input';
+  if (t.includes('✓') || t.includes('OK') || t.includes('VALID') || t.includes('Safe Journey'))
+    return 'log-success';
+  if (t.includes('✗') || t.includes('ERROR') || t.includes('EXPIRED') || t.includes('FAILED') || t.includes('SHORT'))
+    return 'log-error';
+  if (t.includes('CANCELLED') || t.includes('Thank you'))
+    return 'log-warn';
+  if (t.includes('NAVI MUMBAI') || t.includes('CIDCO') || /Q[0-9]+/.test(t))
+    return 'log-title';
+  return 'log-info';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ATVM ENGINE (from ATVM_3D_v3_0.html — fully integrated)
+═══════════════════════════════════════════════════════════ */
+const ATVM = {
+  SOURCE:   "Belapur Terminal",
+  HELPLINE: "1800-123-CIDCO",
+  STATIONS: ["Belapur Terminal","RBI Colony","Belpada","Utsav Chowk",
+             "Kendriya Vihar","Kharghar Village","Central Park",
+             "Pethpada","Amandoot","Pethali-Taloja","Pendhar"],
+  DIST: [0,1,2,4,5,6,7,8,9,10,11],
+
+  state: '',
+  bk: {},
+  history: [],
+
+  fareDist(km) {
+    if (km <= 3)  return 10;
+    if (km <= 6)  return 15;
+    if (km <= 9)  return 20;
+    if (km <= 11) return 25;
+    return 30;
+  },
+
+  calcTotal() {
+    const bk = this.bk;
+    if (bk.type === 'DAY_PASS') return 100 * bk.pax;
+    const base = this.fareDist(this.DIST[bk.destIdx]);
+    let total = base * bk.pax;
+    if (bk.isCard) {
+      // Discount applies to card holder's single ticket only
+      total = (base * bk.discount) + (base * (bk.pax - 1));
+    }
+    if (bk.type === 'RETURN') total *= 2;
+    return Math.round(total * 100) / 100;
+  },
+
+  normDate(s) {
+    if (!s) return null;
+    const d = s.replace(/[^0-9]/g, '');
+    if (d.length !== 8) return null;
+    return d.slice(0,2)+'/'+d.slice(2,4)+'/'+d.slice(4);
+  },
+
+  validDate(s) {
+    try {
+      const p = s.split('/');
+      return new Date(+p[2], p[1]-1, +p[0]) >= new Date();
+    } catch(e) { return false; }
+  },
+
+  newTicket() {
+    return 'NMM-'+(Date.now()%1000000)+'-'+Math.floor(Math.random()*100000);
+  },
+
+  resetBk() {
+    this.bk = {
+      isCard:false, age:0, cat:'REGULAR', discount:1.0,
+      type:null, destIdx:-1, destName:'', pax:1,
+      payment:'', ticketNo:'', total:0
+    };
+  },
+
+  scr() { return document.getElementById('screen'); },
+  inp() { return document.getElementById('textInput'); },
+
+  log(t, cls) {
+    const div = document.createElement('div');
+    div.className = 'log-line ' + (cls || getLogClass(t));
+    div.innerHTML = (t !== undefined && t !== null) ? String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;') : '&nbsp;';
+    this.scr().appendChild(div);
+    this.scr().scrollTop = 99999;
+  },
+
+  clr() { this.scr().innerHTML = ''; },
+
+  setStatus(t) {
+    document.getElementById('termStatus').textContent = '● ' + (t || 'READY');
+    // Hook: sync FSM diagram after each state change
+    requestAnimationFrame(() => syncFSM());
+  },
+
+  focusIn() {
+    const i = this.inp();
+    i.value = '';
+    i.focus();
+  },
+
+  head(t) {
+    this.clr();
+    this.log('═'.repeat(48));
+    this.log('  ' + t, 'log-title');
+    this.log('═'.repeat(48));
+    this.log('');
+  },
+
+  btns(arr) {
+    const c = document.getElementById('dynButtons');
+    c.innerHTML = '';
+    arr.forEach(b => {
+      const el = document.createElement('button');
+      el.className = 'fsm-btn ' + getBtnClass(b.v, b.t);
+      el.textContent = b.t;
+      el.onclick = () => this.handle(b.v);
+      c.appendChild(el);
+    });
+    this.focusIn();
+  },
+
+  handle(v) {
+    this.log('  > ' + v, 'log-input');
+    this.process(String(v));
+    this.focusIn();
+  },
+
+  process(cmd) {
+    if (cmd === 'C' || cmd === 'BACK') {
+      this.log('');
+      this.log('  ❌  CANCELLED — returning to main menu...', 'log-warn');
+      this.resetBk();
+      setTimeout(() => this.Q0(), 1400);
+      return;
+    }
+    if (cmd === 'MENU')         { this.Q0(); return; }
+    if (cmd === 'EXIT_CONFIRM') { this.doExit(); return; }
+
+    switch (this.state) {
+      case 'Q0':           this.pQ0(cmd);       break;
+      case 'Q1':           this.pQ1(cmd);       break;
+      case 'Q2_DATE':      this.pQ2Date(cmd);   break;
+      case 'Q2_AGE':       this.pQ2Age(cmd);    break;
+      case 'Q3':           this.pQ3(cmd);       break;
+      case 'Q4':           this.pQ4(cmd);       break;
+      case 'Q5':           this.pQ5(cmd);       break;
+      case 'Q6':           this.pQ6(cmd);       break;
+      case 'Q7':           this.pQ7(cmd);       break;
+      case 'Q7_CASH':      this.pCash(cmd);     break;
+      case 'Q7_SIM':       this.pSim(cmd);      break;
+      case 'Q8':           this.pQ8(cmd);       break;
+      case 'RECHARGE':     this.pRecharge(cmd); break;
+      case 'RECHARGE_AMT': this.pRechAmt(cmd);  break;
+      case 'RECHARGE_PAY': this.pRechPay(cmd);  break;
+      case 'STATIONS':     this.pStations(cmd); break;
+      case 'SUMMARY':      this.pSummary(cmd);  break;
+    }
+  },
+
+  // ── Q0: Main Menu ──────────────────────────────
+  Q0() {
+    this.state = 'Q0';
+    this.resetBk();
+    // Reset visual path on return to idle
+    visualPath = ['Q0'];
+    lastVisualNode = 'Q0';
+    this.head('MAIN MENU  —  Q0: IDLE');
+    this.log('  Source: ' + this.SOURCE, 'log-transition');
+    this.log('');
+    this.log('  1.  Book New Ticket');
+    this.log('  2.  Recharge Smart Card');
+    this.log('  3.  Station Information');
+    this.log("  4.  Today's Summary");
+    this.log('  5.  Exit');
+    this.setStatus('Q0 MAIN MENU');
+    this.btns([
+      {t:'1. Book Ticket',  v:'1'},
+      {t:'2. Recharge',     v:'2'},
+      {t:'3. Stations',     v:'3'},
+      {t:'4. Summary',      v:'4'},
+      {t:'5. Exit',         v:'5'}
+    ]);
+  },
+
+  pQ0(cmd) {
+    if      (cmd==='1') this.Q1();
+    else if (cmd==='2') this.goRecharge();
+    else if (cmd==='3') this.goStations();
+    else if (cmd==='4') this.goSummary();
+    else if (cmd==='5') this.goExit();
+    else this.log('  ⚠ ERROR: Enter 1–5', 'log-error');
+  },
+
+  // ── Q1: User Type ──────────────────────────────
+  Q1() {
+    this.state = 'Q1';
+    this.head('NEW BOOKING  —  Q1: USER TYPE');
+    this.log('  1.  Smart Card User  (with discounts)');
+    this.log('  2.  Normal User      (Cash / UPI / Card)');
+    this.setStatus('Q1 USER TYPE');
+    this.btns([
+      {t:'1. Smart Card',  v:'1'},
+      {t:'2. Normal User', v:'2'},
+      {t:'C. Cancel',      v:'C'}
+    ]);
+  },
+
+  pQ1(cmd) {
+    if      (cmd==='1') { this.bk.isCard = true;  this.Q2Date(); }
+    else if (cmd==='2') {
+      this.bk.isCard = false;
+      this.bk.discount = 1.0;
+      this.bk.cat = 'REGULAR';
+      setTimeout(() => this.Q3(), 250);
+    }
+    else this.log('  ⚠ ERROR: Enter 1 or 2', 'log-error');
+  },
+
+  // ── Q2a: Card Expiry Date ──────────────────────
+  Q2Date() {
+    this.state = 'Q2_DATE';
+    this.head('SMART CARD  —  Q2: EXPIRY DATE');
+    this.log('  Enter card expiry date (dd/mm/yyyy)');
+    this.log('  Example: 12/04/2027  or  12042027');
+    this.log('');
+    this.log('  ← Type date in input field + press ENTER', 'log-transition');
+    this.setStatus('Q2 CARD DATE');
+    this.btns([{t:'C. Cancel', v:'C'}]);
+  },
+
+  pQ2Date(cmd) {
+    const norm = this.normDate(cmd);
+    if (!norm) {
+      this.log('  ⚠ ERROR: Use dd/mm/yyyy format (e.g. 12/04/2027)', 'log-error');
+      return;
+    }
+    if (!this.validDate(norm)) {
+      this.log('  ✗ Card EXPIRED — returning to menu...', 'log-error');
+      setTimeout(() => this.Q0(), 2000);
+      return;
+    }
+    this.log('  ✓ Card VALID — discount applies to card holder', 'log-success');
+    this.Q2Age();
+  },
+
+  // ── Q2b: Card Holder Age ───────────────────────
+  Q2Age() {
+    this.state = 'Q2_AGE';
+    this.head('SMART CARD  —  Q2: CARD HOLDER AGE');
+    this.log('  Discount Rules:', 'log-transition');
+    this.log('  Student (age ≤ 24)  →  75% OFF');
+    this.log('  Senior  (age ≥ 60)  →  40% OFF');
+    this.log('  Regular             →  No discount');
+    this.log('');
+    this.log('  ← Type age in input field + press ENTER', 'log-transition');
+    this.setStatus('Q2 CARD AGE');
+    this.btns([{t:'C. Cancel', v:'C'}]);
+  },
+
+  pQ2Age(cmd) {
+    const age = parseInt(cmd);
+    if (isNaN(age) || age < 1 || age > 120) {
+      this.log('  ⚠ ERROR: Enter valid age (1–120)', 'log-error');
+      return;
+    }
+    this.bk.age = age;
+    if (age <= 24) {
+      this.bk.cat = 'STUDENT';
+      this.bk.discount = 0.25;  // pays 25% of base fare
+      this.log('  ✓ Category: STUDENT — 75% discount applied', 'log-success');
+    } else if (age >= 60) {
+      this.bk.cat = 'SENIOR';
+      this.bk.discount = 0.60;  // pays 60% of base fare
+      this.log('  ✓ Category: SENIOR CITIZEN — 40% discount applied', 'log-success');
+    } else {
+      this.bk.cat = 'REGULAR';
+      this.bk.discount = 1.0;
+      this.log('  ✓ Category: REGULAR — no discount', 'log-info');
+    }
+    setTimeout(() => this.Q3(), 350);
+  },
+
+  // ── Q3: Destination ────────────────────────────
+  Q3() {
+    this.state = 'Q3';
+    this.head('BOOKING  —  Q3: DESTINATION');
+    this.log('  Select destination station:', 'log-transition');
+    this.log('');
+    const btnsArr = [];
+    for (let i = 1; i < this.STATIONS.length; i++) {
+      const km = this.DIST[i];
+      const fare = this.fareDist(km);
+      this.log(`  ${i}.  ${this.STATIONS[i].padEnd(22)} ${km} km   Rs.${fare}`);
+      btnsArr.push({t: i+'. '+this.STATIONS[i], v: String(i)});
+    }
+    btnsArr.push({t:'C. Cancel', v:'C'});
+    this.log('');
+    this.setStatus('Q3 DESTINATION');
+    this.btns(btnsArr);
+  },
+
+  pQ3(cmd) {
+    const idx = parseInt(cmd);
+    if (isNaN(idx) || idx < 1 || idx >= this.STATIONS.length) {
+      this.log('  ⚠ ERROR: Enter valid station number', 'log-error');
+      return;
+    }
+    this.bk.destIdx = idx;
+    this.bk.destName = this.STATIONS[idx];
+    this.log(`  ✓ Destination: ${this.bk.destName}  (${this.DIST[idx]} km)`, 'log-success');
+    setTimeout(() => this.Q4(), 300);
+  },
+
+  // ── Q4: Journey Type ───────────────────────────
+  Q4() {
+    this.state = 'Q4';
+    this.head('BOOKING  —  Q4: JOURNEY TYPE');
+    const km = this.DIST[this.bk.destIdx];
+    const fare = this.fareDist(km);
+    this.log(`  Route: ${this.SOURCE} → ${this.bk.destName}`);
+    this.log(`  Distance: ${km} km   |   Base Fare: Rs.${fare}`);
+    this.log('');
+    this.log('  1.  Single Journey');
+    this.log('  2.  Return Journey  (2× single fare)');
+    this.log('  3.  Day Pass        (Rs.100/person, all stations)');
+    this.setStatus('Q4 JOURNEY TYPE');
+    this.btns([
+      {t:'1. Single',     v:'1'},
+      {t:'2. Return',     v:'2'},
+      {t:'3. Day Pass',   v:'3'},
+      {t:'C. Cancel',     v:'C'}
+    ]);
+  },
+
+  pQ4(cmd) {
+    if      (cmd==='1') { this.bk.type='SINGLE';   this.log('  ✓ Journey Type: SINGLE', 'log-success'); setTimeout(()=>this.Q5(),300); }
+    else if (cmd==='2') { this.bk.type='RETURN';   this.log('  ✓ Journey Type: RETURN', 'log-success'); setTimeout(()=>this.Q5(),300); }
+    else if (cmd==='3') { this.bk.type='DAY_PASS'; this.log('  ✓ Journey Type: DAY PASS', 'log-success'); setTimeout(()=>this.Q5(),300); }
+    else this.log('  ⚠ ERROR: Enter 1, 2, or 3', 'log-error');
+  },
+
+  // ── Q5: Passenger Count ─────────────────────────
+  Q5() {
+    this.state = 'Q5';
+    this.head('BOOKING  —  Q5: PASSENGERS');
+    this.log('  How many passengers? (1–9)');
+    if (this.bk.isCard) {
+      this.log('  Note: Discount applies to card holder (1 person) only.', 'log-warn');
+    }
+    this.log('');
+    this.log('  ← Type count in input field + press ENTER', 'log-transition');
+    this.setStatus('Q5 PASSENGERS');
+    this.btns([
+      {t:'1',v:'1'},{t:'2',v:'2'},{t:'3',v:'3'},{t:'4',v:'4'},{t:'5',v:'5'},
+      {t:'C. Cancel', v:'C'}
+    ]);
+  },
+
+  pQ5(cmd) {
+    const n = parseInt(cmd);
+    if (isNaN(n) || n < 1 || n > 9) {
+      this.log('  ⚠ ERROR: Enter 1–9 passengers', 'log-error');
+      return;
+    }
+    this.bk.pax = n;
+    this.log(`  ✓ Passengers: ${n}`, 'log-success');
+    setTimeout(() => this.Q6(), 300);
+  },
+
+  // ── Q6: Fare Confirmation ───────────────────────
+  Q6() {
+    this.state = 'Q6';
+    this.head('BOOKING  —  Q6: FARE SUMMARY');
+    const bk = this.bk;
+    const total = this.calcTotal();
+    bk.total = total;
+    const km = this.DIST[bk.destIdx];
+    const baseRate = this.fareDist(km);
+
+    this.log(`  Route:    ${this.SOURCE} → ${bk.destName}`);
+    if (bk.type !== 'DAY_PASS') this.log(`  Distance: ${km} km`);
+    this.log(`  Type:     ${bk.type}`);
+    this.log(`  Pax:      ${bk.pax}`);
+    if (bk.isCard) {
+      this.log(`  Category: ${bk.cat} (Age ${bk.age})`);
+      const disc = Math.round((1 - bk.discount) * 100);
+      if (disc > 0) this.log(`  Discount: ${disc}% on 1 ticket`, 'log-success');
+    }
+    this.log('  ────────────────────────────────────────────────');
+    if (bk.type === 'DAY_PASS') this.log(`  Rate:     Rs.100/person`);
+    else this.log(`  Base Rate: Rs.${baseRate}/person`);
+    this.log(`  TOTAL:    Rs.${total.toFixed(2)}`, 'log-success');
+    this.log('');
+    this.log('  Confirm booking?');
+    this.setStatus('Q6 FARE CONFIRM');
+    this.btns([
+      {t:'Y — Confirm',  v:'Y'},
+      {t:'N — Cancel',   v:'N'}
+    ]);
+  },
+
+  pQ6(cmd) {
+    if      (cmd==='Y') setTimeout(() => this.Q7(), 300);
+    else if (cmd==='N') this.process('C');
+    else this.log('  ⚠ ERROR: Enter Y or N', 'log-error');
+  },
+
+  // ── Q7: Payment Method ─────────────────────────
+  Q7() {
+    this.state = 'Q7';
+    this.head('BOOKING  —  Q7: PAYMENT');
+    this.log(`  Amount Due: Rs.${this.bk.total.toFixed(2)}`, 'log-transition');
+    this.log('');
+    this.log('  1.  Cash');
+    this.log('  2.  UPI / QR Code');
+    this.log('  3.  Debit / Credit Card');
+    this.log('  4.  Smart Card Balance');
+    this.setStatus('Q7 PAYMENT');
+    this.btns([
+      {t:'1. Cash',         v:'1'},
+      {t:'2. UPI/QR',       v:'2'},
+      {t:'3. Card',         v:'3'},
+      {t:'4. Smart Balance',v:'4'},
+      {t:'C. Cancel',       v:'C'}
+    ]);
+  },
+
+  pQ7(cmd) {
+    if      (cmd==='1') { this.bk.payment='Cash';          this.goCash(); }
+    else if (cmd==='2') { this.bk.payment='UPI/QR Code';   this.goSim('UPI/QR'); }
+    else if (cmd==='3') { this.bk.payment='Card';          this.goSim('Card'); }
+    else if (cmd==='4') { this.bk.payment='Smart Balance'; this.goSim('Smart Balance'); }
+    else this.log('  ⚠ ERROR: Enter 1–4', 'log-error');
+  },
+
+  // ── Q7 Cash Sub-flow ───────────────────────────
+  goCash() {
+    this.state = 'Q7_CASH';
+    this.log('');
+    this.log(`  Cash Due: Rs.${this.bk.total.toFixed(2)}`, 'log-warn');
+    this.log('  Insert cash or click a denomination:');
+    this.setStatus('Q7 CASH');
+    this.btns([
+      {t:'₹10',v:'10'},{t:'₹20',v:'20'},{t:'₹50',v:'50'},
+      {t:'₹100',v:'100'},{t:'₹200',v:'200'},{t:'₹500',v:'500'},
+      {t:'C. Cancel',v:'C'}
+    ]);
+  },
+
+  pCash(cmd) {
+    const paid = parseFloat(cmd);
+    if (isNaN(paid) || paid <= 0) { this.log('  ⚠ ERROR: Enter valid amount', 'log-error'); return; }
+    if (paid < this.bk.total) {
+      this.log(`  ⚠ SHORT: Rs.${(this.bk.total - paid).toFixed(2)} more needed`, 'log-warn');
+      return;
+    }
+    this.log(`  ✓ Rs.${paid} received`, 'log-success');
+    if (paid > this.bk.total)
+      this.log(`  Change: Rs.${(paid - this.bk.total).toFixed(2)}`, 'log-transition');
+    setTimeout(() => this.Q8(), 700);
+  },
+
+  // ── Q7 Digital Payment Sim ─────────────────────
+  goSim(method) {
+    this.state = 'Q7_SIM';
+    this.log('');
+    this.log(`  [SIM] ${method}  Rs.${this.bk.total.toFixed(2)}`, 'log-transition');
+    this.log('  Simulate payment result:');
+    this.setStatus('Q7 ' + method);
+    this.btns([
+      {t:'1. Success', v:'1'},
+      {t:'2. Retry',   v:'2'},
+      {t:'3. Cancel',  v:'3'}
+    ]);
+  },
+
+  pSim(cmd) {
+    if      (cmd==='1') { this.log('  ✓ Payment successful!', 'log-success'); setTimeout(()=>this.Q8(), 600); }
+    else if (cmd==='2') this.goSim(this.bk.payment);
+    else if (cmd==='3') this.process('C');
+    else this.log('  ⚠ ERROR: Enter 1, 2, or 3', 'log-error');
+  },
+
+  // ── Q8: Print Ticket ───────────────────────────
+  Q8() {
+    this.state = 'Q8';
+    this.head('Q8: PRINT TICKET');
+    this.log('  [SIM] Sending to printer...', 'log-transition');
+    this.log('  1.  Print OK');
+    this.log('  2.  Printer Failed');
+    this.setStatus('Q8 PRINT');
+    this.btns([
+      {t:'1. Print OK', v:'1'},
+      {t:'2. Failed',   v:'2'}
+    ]);
+  },
+
+  pQ8(cmd) {
+    if (cmd === '1') {
+      this.bk.ticketNo = this.newTicket();
+      this.printTicket();           // Terminal print
+      this.history.push(Object.assign({}, this.bk));
+      showTicketModal(this.bk);     // Beautiful ticket modal
+      this.btns([{t:'← Main Menu', v:'MENU'}]);
+      setTimeout(() => this.Q0(), 8000);
+    } else if (cmd === '2') {
+      this.log(`  ✗ Printer error! Helpline: ${this.HELPLINE}`, 'log-error');
+      this.btns([{t:'Retry', v:'1'},{t:'Cancel', v:'C'}]);
+    } else {
+      this.log('  ⚠ ERROR: 1 or 2', 'log-error');
+    }
+  },
+
+  printTicket() {
+    const now = new Date(), bk = this.bk;
+    this.clr();
+    this.log('═'.repeat(48));
+    this.log('     NAVI MUMBAI METRO — CIDCO', 'log-title');
+    this.log('═'.repeat(48));
+    this.log(`  No:   ${bk.ticketNo}`, 'log-transition');
+    this.log(`  Date: ${now.toLocaleDateString('en-GB')}`);
+    this.log(`  Time: ${now.toLocaleTimeString('en-GB',{hour12:false})}`);
+    this.log('  ────────────────────────────────────────────────');
+    this.log(`  ${this.SOURCE} → ${bk.destName}`, 'log-transition');
+    if (bk.type !== 'DAY_PASS' && bk.destIdx !== -1)
+      this.log(`  Distance: ${this.DIST[bk.destIdx]} km`);
+    else if (bk.type === 'DAY_PASS')
+      this.log('  All Stations — Day Pass');
+    this.log('  ────────────────────────────────────────────────');
+    this.log(`  Type:     ${bk.type}`);
+    this.log(`  Pax:      ${bk.pax}`);
+    if (bk.isCard) this.log(`  Category: ${bk.cat} (Age ${bk.age})`);
+    this.log('  ────────────────────────────────────────────────');
+    if (bk.type==='DAY_PASS') this.log('  Rate: Rs.100/person');
+    else if (bk.destIdx !== -1) this.log(`  Rate: Rs.${this.fareDist(this.DIST[bk.destIdx])}/person`);
+    this.log(`  TOTAL:  Rs.${bk.total.toFixed(2)}`, 'log-success');
+    this.log(`  Paid:   ${bk.payment}`);
+    this.log('═'.repeat(48));
+    this.log('  ✓  SAFE JOURNEY!  🚇', 'log-success');
+    this.log('═'.repeat(48));
+  },
+
+  // ── Stations Info ──────────────────────────────
+  goStations() {
+    this.state = 'STATIONS';
+    this.head('STATION INFORMATION');
+    this.log('  No.  Station              Dist   Fare', 'log-transition');
+    this.log('  ────────────────────────────────────────────────');
+    for (let i = 0; i < this.STATIONS.length; i++) {
+      const km = this.DIST[i];
+      const f  = this.fareDist(km);
+      const src = i === 0 ? ' ← SOURCE' : '';
+      this.log(`  ${String(i).padStart(2)}.  ${this.STATIONS[i].padEnd(22)} ${String(km).padStart(2)} km  Rs.${f}${src}`);
+    }
+    this.log('');
+    this.log('  FARE SLABS: 0-3=₹10  3-6=₹15  6-9=₹20  9-11=₹25  >11=₹30', 'log-transition');
+    this.log('  DAY PASS: Rs.100/person — unlimited travel all day');
+    this.setStatus('STATION INFO');
+    this.btns([{t:'← Main Menu', v:'MENU'}]);
+  },
+
+  pStations(cmd) { if (cmd === 'MENU') this.Q0(); },
+
+  // ── Today's Summary ────────────────────────────
+  goSummary() {
+    this.state = 'SUMMARY';
+    const count   = this.history.length;
+    const revenue = this.history.reduce((s, h) => s + h.total, 0);
+    this.head("TODAY'S SUMMARY");
+    this.log(`  Tickets Issued : ${count}`, 'log-transition');
+    this.log(`  Total Revenue  : Rs.${revenue.toFixed(2)}`, 'log-success');
+    if (count > 0) {
+      this.log('');
+      this.log('  Recent Transactions:', 'log-transition');
+      this.log('  ────────────────────────────────────────────────');
+      this.history.slice(-5).forEach(h => {
+        this.log(`  ${h.ticketNo}  ${(h.type||'').padEnd(10)}  Rs.${h.total.toFixed(2)}`);
+      });
+    } else {
+      this.log('');
+      this.log('  No transactions recorded yet.', 'log-muted');
+    }
+    this.setStatus('SUMMARY');
+    this.btns([{t:'← Main Menu', v:'MENU'}]);
+  },
+
+  pSummary(cmd) { if (cmd === 'MENU') this.Q0(); },
+
+  // ── Smart Card Recharge ────────────────────────
+  goRecharge() {
+    this.state = 'RECHARGE';
+    this.resetBk();
+    this.bk.isCard = true;
+    this.head('SMART CARD RECHARGE');
+    this.log('  1.  Rs.100');
+    this.log('  2.  Rs.200');
+    this.log('  3.  Rs.500');
+    this.log('  4.  Custom Amount');
+    this.setStatus('RECHARGE');
+    this.btns([
+      {t:'1. ₹100',  v:'100'},
+      {t:'2. ₹200',  v:'200'},
+      {t:'3. ₹500',  v:'500'},
+      {t:'4. Custom',v:'custom'},
+      {t:'Cancel',   v:'C'}
+    ]);
+  },
+
+  pRecharge(cmd) {
+    if (['100','200','500'].includes(cmd)) {
+      this.bk.total = parseFloat(cmd);
+      this.bk.type  = 'RECHARGE';
+      this.goRechPay();
+    } else if (cmd === 'custom') {
+      this.state = 'RECHARGE_AMT';
+      this.log('  Enter custom recharge amount:', 'log-transition');
+      this.log('  ← Type amount in input field + press ENTER', 'log-transition');
+      this.setStatus('RECHARGE AMOUNT');
+      this.btns([{t:'Cancel', v:'C'}]);
+    } else {
+      this.log('  ⚠ ERROR: Choose a recharge option', 'log-error');
+    }
+  },
+
+  pRechAmt(cmd) {
+    const amt = parseFloat(cmd);
+    if (isNaN(amt) || amt <= 0) { this.log('  ⚠ ERROR: Enter valid amount', 'log-error'); return; }
+    this.bk.total = amt;
+    this.bk.type  = 'RECHARGE';
+    this.goRechPay();
+  },
+
+  goRechPay() {
+    this.state = 'RECHARGE_PAY';
+    this.head('RECHARGE PAYMENT');
+    this.log(`  Recharge Amount: Rs.${this.bk.total.toFixed(2)}`, 'log-transition');
+    this.log('  1.  Cash  2.  UPI  3.  Card');
+    this.setStatus('RECHARGE PAYMENT');
+    this.btns([
+      {t:'1. Cash', v:'1'},
+      {t:'2. UPI',  v:'2'},
+      {t:'3. Card', v:'3'},
+      {t:'Cancel',  v:'C'}
+    ]);
+  },
+
+  pRechPay(cmd) {
+    if      (cmd==='1') { this.bk.payment='Cash'; this.goCash(); }
+    else if (cmd==='2') { this.bk.payment='UPI';  this.goSim('UPI'); }
+    else if (cmd==='3') { this.bk.payment='Card'; this.goSim('Card'); }
+    else this.process('C');
+  },
+
+  // ── Exit ───────────────────────────────────────
+  goExit() {
+    this.head('GOODBYE');
+    this.log(`  Thank you for using Navi Mumbai Metro!`, 'log-success');
+    this.log(`  Helpline: ${this.HELPLINE}`, 'log-transition');
+    this.log('');
+    this.log('  Safe Journey! 🚇', 'log-success');
+    this.setStatus('IDLE');
+    this.btns([{t:'↩ Restart', v:'MENU'}]);
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════
+   FSM SYNC FUNCTIONS (from ATVM_FSM_Simulator.html)
+═══════════════════════════════════════════════════════════ */
+function syncFSM() {
+  const visual = STATE_VISUAL[ATVM.state] || 'Q0';
+
+  // Update visual path
+  if (visual !== lastVisualNode) {
+    // If we jump to QR, only add if not already last
+    if (visual === 'Q0') {
+      // Path reset handled in Q0() directly
+    } else {
+      visualPath.push(visual);
+    }
+    lastVisualNode = visual;
+  }
+
+  refreshDiagram(visual);
+  refreshBreadcrumb(visual);
+  refreshStateBadge(visual);
+}
+
+function refreshStateBadge(visual) {
+  const m = NODE_META[visual] || NODE_META.Q0;
+  const badge = document.getElementById('stateBadge');
+  badge.textContent = visual;
+  badge.style.background = m.bg;
+  badge.style.color = m.color;
+  const desc = document.getElementById('stateDesc');
+  desc.textContent = m.desc;
+  desc.style.color = m.color;
+}
+
+function refreshBreadcrumb(currentVisual) {
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = '';
+  visualPath.forEach((s, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span');
+      sep.className = 'bc-sep';
+      sep.textContent = '→';
+      bc.appendChild(sep);
+    }
+    const span = document.createElement('span');
+    span.className = 'bc-node';
+    const isLast = i === visualPath.length - 1;
+    if (isLast) {
+      if (s === 'QI') span.classList.add('bc-error');
+      else if (s === 'QR') span.classList.add('bc-cancel');
+      else span.classList.add('bc-current');
+    } else {
+      span.classList.add(s === 'Q0' && i === 0 ? 'bc-idle' : 'bc-visited');
+    }
+    span.textContent = s;
+    bc.appendChild(span);
+  });
+  bc.scrollLeft = bc.scrollWidth;
+}
+
+function refreshDiagram(currentVisual) {
+  const ALL = ['Q0','Q1','Q2','Q3','Q4','Q5','Q6','Q7','QI','QR'];
+  ALL.forEach(s => {
+    const g = document.getElementById('nd-' + s);
+    if (!g) return;
+    const circles = g.querySelectorAll('circle');
+    const mainCircle = circles[0];
+    const texts = g.querySelectorAll('text');
+    const mainText = texts[0];
+
+    const isActive  = currentVisual === s;
+    const isVisited = !isActive && visualPath.includes(s);
+
+    if (isActive) {
+      mainCircle.setAttribute('filter', 'url(#glow)');
+      mainCircle.setAttribute('stroke-width', '2.8');
+      if (s === 'QI') {
+        mainCircle.setAttribute('stroke', '#ff3d57');
+        mainCircle.setAttribute('fill', 'rgba(255,61,87,0.15)');
+        mainText.setAttribute('fill', '#ff3d57');
+      } else if (s === 'QR') {
+        mainCircle.setAttribute('stroke', '#ffb300');
+        mainCircle.setAttribute('fill', 'rgba(255,179,0,0.15)');
+        mainText.setAttribute('fill', '#ffb300');
+      } else if (s === 'Q7') {
+        mainCircle.setAttribute('stroke', '#00e676');
+        mainCircle.setAttribute('fill', 'rgba(0,230,118,0.18)');
+        mainText.setAttribute('fill', '#00e676');
+      } else {
+        mainCircle.setAttribute('stroke', '#00d4ff');
+        mainCircle.setAttribute('fill', 'rgba(0,212,255,0.15)');
+        mainText.setAttribute('fill', '#00d4ff');
+      }
+    } else if (isVisited) {
+      mainCircle.setAttribute('filter', '');
+      mainCircle.setAttribute('stroke', 'rgba(0,212,255,0.3)');
+      mainCircle.setAttribute('fill', 'rgba(0,212,255,0.05)');
+      mainCircle.setAttribute('stroke-width', '1.5');
+      mainText.setAttribute('fill', '#3a6a80');
+    } else {
+      mainCircle.setAttribute('filter', '');
+      mainCircle.setAttribute('stroke-width', '1.8');
+      if (s === 'Q7') {
+        mainCircle.setAttribute('stroke', 'rgba(0,230,118,0.55)');
+        mainCircle.setAttribute('fill', '#071a10');
+        mainText.setAttribute('fill', '#60aa80');
+      } else if (s === 'QI') {
+        mainCircle.setAttribute('stroke', 'rgba(255,61,87,0.42)');
+        mainCircle.setAttribute('fill', '#180608');
+        mainText.setAttribute('fill', '#bb6060');
+      } else if (s === 'QR') {
+        mainCircle.setAttribute('stroke', 'rgba(255,179,0,0.42)');
+        mainCircle.setAttribute('fill', '#181000');
+        mainText.setAttribute('fill', '#b08030');
+      } else {
+        mainCircle.setAttribute('stroke', 'rgba(0,212,255,0.35)');
+        mainCircle.setAttribute('fill', '#0a1828');
+        mainText.setAttribute('fill', '#70a8c0');
+      }
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TICKET MODAL POPULATION
+═══════════════════════════════════════════════════════════ */
+function showTicketModal(bk) {
+  const now = new Date();
+  const dt  = now.toLocaleString('en-IN', {
+    year:'numeric', month:'short', day:'2-digit',
+    hour:'2-digit', minute:'2-digit'
+  });
+  const bar = Array.from({length:4}, () => (1000+Math.floor(Math.random()*9000))).join(' ');
+
+  document.getElementById('tk-from').textContent    = ATVM.SOURCE;
+  document.getElementById('tk-to').textContent      = bk.destName || bk.type || '—';
+  document.getElementById('tk-no').textContent      = bk.ticketNo;
+  document.getElementById('tk-fare').textContent    = 'Rs.' + bk.total.toFixed(2);
+  document.getElementById('tk-pax').textContent     = bk.pax + ' pax';
+  document.getElementById('tk-type').textContent    = bk.type;
+  document.getElementById('tk-payment').textContent = bk.payment;
+  document.getElementById('tk-datetime').textContent= dt;
+  document.getElementById('tk-barcode').textContent = bar;
+
+  document.getElementById('ticketOverlay').classList.add('open');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL CONTROLS
+═══════════════════════════════════════════════════════════ */
+function closeOverlay(id) {
+  document.getElementById(id).classList.remove('open');
+}
+function openOverlay(id) {
+  document.getElementById(id).classList.add('open');
+}
+
+document.getElementById('mapBtn').onclick     = () => openOverlay('mapOverlay');
+document.getElementById('mapClose').onclick   = () => closeOverlay('mapOverlay');
+document.getElementById('mapOverlay').onclick = e => { if(e.target.id==='mapOverlay') closeOverlay('mapOverlay'); };
+
+document.getElementById('ticketClose').onclick   = () => closeOverlay('ticketOverlay');
+document.getElementById('ticketOverlay').onclick = e => { if(e.target.id==='ticketOverlay') closeOverlay('ticketOverlay'); };
+
+// Header quick-access buttons (trigger ATVM directly)
+document.getElementById('summaryBtn').onclick  = () => { ATVM.handle('4'); };
+document.getElementById('stationsBtn').onclick = () => { ATVM.handle('3'); };
+
+/* ═══════════════════════════════════════════════════════════
+   TEXT INPUT HANDLING
+═══════════════════════════════════════════════════════════ */
+const textInput = document.getElementById('textInput');
+const enterBtn  = document.getElementById('enterBtn');
+
+function submitInput() {
+  const v = textInput.value.trim();
+  if (v) {
+    ATVM.handle(v);
+    textInput.value = '';
+  }
+}
+
+textInput.addEventListener('keypress', e => {
+  if (e.key === 'Enter') { e.preventDefault(); submitInput(); }
+});
+
+enterBtn.onclick = () => submitInput();
+
+// Global keyboard shortcuts (when input not focused)
+document.addEventListener('keydown', e => {
+  if (document.activeElement !== textInput) {
+    if (e.key >= '1' && e.key <= '9') ATVM.handle(e.key);
+    if (e.key.toUpperCase() === 'C')  ATVM.handle('C');
+    if (e.key.toUpperCase() === 'Y')  ATVM.handle('Y');
+    if (e.key.toUpperCase() === 'N')  ATVM.handle('N');
+  }
+});
+
+// Auto-focus input when clicking anywhere in terminal
+document.querySelector('.terminal-panel').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') textInput.focus();
+});
+
+/* ═══════════════════════════════════════════════════════════
+   COLLAPSIBLE SECTIONS
+═══════════════════════════════════════════════════════════ */
+function setupColl(headerId, bodyId, chevronId) {
+  document.getElementById(headerId).addEventListener('click', () => {
+    const body    = document.getElementById(bodyId);
+    const chevron = document.getElementById(chevronId);
+    const isOpen  = body.classList.toggle('open');
+    chevron.classList.toggle('open', isOpen);
+  });
+}
+
+setupColl('aboutHeader', 'aboutBody', 'aboutChev');
+setupColl('tableHeader', 'tableBody', 'tableChev');
+
+/* ═══════════════════════════════════════════════════════════
+   LIVE CLOCK
+═══════════════════════════════════════════════════════════ */
+function updateClock() {
+  document.getElementById('liveClock').textContent =
+    new Date().toLocaleTimeString('en-IN', { hour12: false });
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+/* ═══════════════════════════════════════════════════════════
+   INIT
+═══════════════════════════════════════════════════════════ */
+refreshDiagram('Q0');
+refreshBreadcrumb('Q0');
+refreshStateBadge('Q0');
+ATVM.Q0();
+textInput.focus();
+</script>
+</body>
+</html>
