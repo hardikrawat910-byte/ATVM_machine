@@ -1,0 +1,1 @@
+This my first year project on ATVM machine (Automatic vending machine) and this project is made with ai and show my knowlegde in the domain the general idea and structure is created by myself and the coduing is done by ai 
